@@ -1,0 +1,54 @@
+flowchart TD
+    User["👤 Demo Presenter<br/>Browser"]
+
+    User --> UI
+
+    subgraph LOCAL["Local Machine / Local VM — POC Environment"]
+        direction TB
+
+        UI["Web UI<br/>Teams-styled HTML/JS<br/>(localhost, static file or simple dev server)"]
+
+        UI <--> API
+
+        subgraph BACKEND["Backend Service — localhost:8000"]
+            direction TB
+            API["API Layer<br/>FastAPI / Node (Express)"]
+            Router["Intent Router<br/>status check / create ticket /<br/>KB lookup / remediation"]
+            API <--> Router
+        end
+
+        subgraph AI["AI Layer (local process)"]
+            direction TB
+            Vector["Local Vector Store<br/>Chroma / FAISS<br/>(file-based, no server needed)"]
+            KBFiles["Sample KB Articles<br/>(local .md/.json fixtures<br/>standing in for Helix KB)"]
+            KBFiles --> Vector
+        end
+
+        Router <--> Vector
+
+        subgraph MOCKS["Mock Integration Layer<br/>(local fixture data or lightweight mock servers)"]
+            direction TB
+            MockHelix["Mock Helix API<br/>JSON fixtures: tickets, audit log<br/>(Flask/Express stub or static JSON)"]
+            MockNetBox["Mock NetBox API<br/>JSON fixtures: CI/CMDB records"]
+            MockZabbix["Mock Zabbix API<br/>JSON fixtures: active alerts"]
+            MockAnsible["Mock Ansible Runner<br/>simulated playbook steps<br/>(no real AWX call yet)"]
+        end
+
+        Router --> MockHelix
+        Router --> MockNetBox
+        Router --> MockZabbix
+        Router --> MockAnsible
+        MockAnsible -- "logs result" --> MockHelix
+
+        AuditLog["Local Audit Log<br/>SQLite / JSON file<br/>records every bot action"]
+        MockHelix --> AuditLog
+    end
+
+    Router -- "outbound HTTPS only" --> Claude["Claude API<br/>(external — the only<br/>non-local network call)"]
+    Claude --> Router
+
+    style UI fill:#fff4e5,stroke:#c15805
+    style AI fill:#eef2ff,stroke:#6264a7
+    style MOCKS fill:#f5f0ff,stroke:#8764b8
+    style Claude fill:#e8e8f4,stroke:#6264a7
+    style AuditLog fill:#e8f5e9,stroke:#237b4b

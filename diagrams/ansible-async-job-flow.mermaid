@@ -1,0 +1,58 @@
+flowchart TD
+    User["👤 User approves remediation<br/>in chat"] --> Backend
+
+    subgraph BACKEND["Backend Orchestrator"]
+        direction TB
+        Check["1. Validate request<br/>Is this job template on the<br/>approved whitelist?"]
+        Perm["2. Check requester permissions<br/>(role/group from Entra ID / Helix)"]
+        Launch["3. Launch job via AWX API<br/>POST /job_templates/{id}/launch/"]
+        StoreID["4. Store job_id + ticket_id<br/>mapping (for traceability)"]
+
+        Check --> Perm --> Launch --> StoreID
+    end
+
+    Backend --> Check
+    Perm -- "denied" --> DenyMsg["Bot: 'You don't have<br/>permission to approve this'"]
+
+    StoreID -- "job_id" --> AWX
+
+    subgraph AWX["Ansible Automation Platform (AWX)"]
+        direction TB
+        Queue["Job queued"]
+        Running["Job running on target<br/>(web01.prod.internal)"]
+        Result["Job result:<br/>success / failed / error"]
+        Queue --> Running --> Result
+    end
+
+    subgraph POLL["Status Tracking (choose one pattern)"]
+        direction TB
+        PollLoop["Option A: Backend polls<br/>GET /jobs/{id}/ every few seconds<br/>until status != running"]
+        Webhook["Option B: AWX notification<br/>webhook fires on job completion<br/>(preferred — no polling overhead)"]
+    end
+
+    Running -.-> PollLoop
+    Result -- "completion event" --> Webhook
+
+    PollLoop --> UpdateUI
+    Webhook --> UpdateUI
+
+    subgraph UISTATE["Chat UI State"]
+        direction TB
+        Pending["Card shows: 'Running…'<br/>with live step/status updates"]
+        Success["Card updates: ✅ Completed<br/>+ result summary"]
+        Failure["Card updates: ❌ Failed<br/>+ sanitized error output"]
+    end
+
+    UpdateUI{"Result?"} --> Success
+    UpdateUI --> Failure
+
+    Success --> Audit["Write to Helix:<br/>- job outcome<br/>- link to AWX job run<br/>- close/update ticket"]
+    Failure --> Escalate["Auto-create/escalate ticket<br/>with failure details<br/>+ link to AWX job run"]
+
+    Audit --> HelixLink[("Helix Ticket<br/>linked to AWX job_id")]
+    Escalate --> HelixLink
+
+    style AWX fill:#eef2ff,stroke:#6264a7
+    style POLL fill:#fff4e5,stroke:#c15805
+    style UISTATE fill:#f5f0ff,stroke:#8764b8
+    style HelixLink fill:#e8f5e9,stroke:#237b4b

@@ -1,0 +1,46 @@
+flowchart TD
+    subgraph SOURCE["Source of Truth"]
+        HelixKB["Helix Knowledge Base<br/>articles created/edited by agents"]
+    end
+
+    HelixKB -- "webhook on publish/update<br/>(preferred)" --> Ingest
+    HelixKB -. "or: scheduled poll<br/>every N hours" .-> Ingest
+
+    subgraph PIPELINE["Ingestion Pipeline (scheduled job / event-driven service)"]
+        direction TB
+        Ingest["1. Fetch changed articles<br/>via Helix REST API"]
+        Clean["2. Clean & normalize<br/>strip HTML/formatting, extract text"]
+        Chunk["3. Chunk by section/heading<br/>(not whole-article blocks)"]
+        Meta["4. Attach metadata<br/>category, product, last-reviewed date,<br/>article ID, owner"]
+        Embed["5. Generate embeddings<br/>(embedding model)"]
+        Upsert["6. Upsert into vector store<br/>replace old vectors for that article ID"]
+
+        Ingest --> Clean --> Chunk --> Meta --> Embed --> Upsert
+    end
+
+    Upsert --> VectorDB[("Vector Store<br/>OpenSearch / pgvector")]
+
+    subgraph QUERYTIME["Query-Time Retrieval"]
+        direction TB
+        UserQ["User question"] --> Search["Semantic search<br/>+ metadata filters<br/>(category, recency)"]
+        Search --> VectorDB
+        VectorDB --> Rank["Re-rank / relevance threshold"]
+        Rank --> Decision{"Confident match?"}
+        Decision -- "Yes" --> Ground["Ground LLM answer<br/>in retrieved chunk(s)<br/>+ cite article ID"]
+        Decision -- "No" --> Fallback["Respond: 'No KB match found'<br/>offer to log a ticket instead"]
+    end
+
+    subgraph FEEDBACK["Feedback Loop"]
+        direction TB
+        ThumbsDown["👎 on bot answer"] --> Flag["Flag article for review /<br/>flag topic gap"]
+        Flag --> KBGap["Feed into KB Gap Analysis<br/>(article rewrite or new article needed)"]
+        KBGap -.-> HelixKB
+    end
+
+    Ground --> ThumbsDown
+    Fallback --> Flag
+
+    style PIPELINE fill:#eef2ff,stroke:#6264a7
+    style QUERYTIME fill:#fff4e5,stroke:#c15805
+    style FEEDBACK fill:#e8f5e9,stroke:#237b4b
+    style VectorDB fill:#f5f0ff,stroke:#8764b8

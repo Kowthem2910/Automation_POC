@@ -1,0 +1,67 @@
+flowchart TD
+    User["👤 End User<br/>(Teams client / Demo web UI)"]
+
+    subgraph CHANNEL["Conversation Channel"]
+        direction TB
+        DemoUI["Phase 0 — Demo<br/>Static HTML/JS UI<br/>hardcoded mock responses<br/><i>(what you clicked through)</i>"]
+        TeamsBot["Phase 3 — Production<br/>Azure Bot Service<br/>+ Teams App Registration"]
+    end
+
+    User --> DemoUI
+    User -.future.-> TeamsBot
+
+    TeamsBot --> Backend
+
+    subgraph BACKEND["Backend Orchestrator (Phase 1: local VM · Phase 2: AWS ECS Fargate)"]
+        direction TB
+        API["API Layer<br/>(FastAPI / Node)"]
+        Router["Intent Router<br/>decides: status check / create ticket /<br/>KB lookup / remediation"]
+        API --> Router
+    end
+
+    subgraph AI["AI Layer"]
+        direction TB
+        Claude["Claude API<br/>NLU · classification ·<br/>priority scoring · response drafting"]
+        Vector["Vector Store<br/>(Chroma local → OpenSearch/pgvector on AWS)<br/>KB article embeddings for RAG"]
+        Claude <--> Vector
+    end
+
+    Router <--> Claude
+
+    subgraph ITSM["ITSM / Infra Integrations (mocked in demo, live APIs in production)"]
+        direction TB
+        Helix["Helix REST API<br/>tickets, KB articles, audit log"]
+        NetBox["NetBox API<br/>CMDB / CI ownership"]
+        Zabbix["Zabbix API<br/>active alerts, monitoring state"]
+        Ansible["Ansible AWX API<br/>whitelisted remediation playbooks"]
+    end
+
+    Router --> Helix
+    Router --> NetBox
+    Router --> Zabbix
+    Router --> Ansible
+
+    Ansible -- "execution result" --> Helix
+    Helix -- "audit trail entry" --> Router
+
+    Router --> API
+    API --> TeamsBot
+    API -.demo mode.-> DemoUI
+
+    subgraph AWS["Phase 2 — AWS Hosting Shell"]
+        direction TB
+        ALB["Application Load Balancer"]
+        Fargate["ECS Fargate<br/>(containerized backend)"]
+        Secrets["Secrets Manager<br/>API keys for Helix/NetBox/Zabbix/Ansible"]
+        Bedrock["(optional) Bedrock<br/>in place of Claude API<br/>for in-VPC LLM traffic"]
+        ALB --> Fargate
+        Fargate --> Secrets
+        Fargate -.optional.-> Bedrock
+    end
+
+    BACKEND -.migrates into.-> AWS
+
+    style DemoUI fill:#fff4e5,stroke:#c15805
+    style TeamsBot fill:#e8e8f4,stroke:#6264a7
+    style AI fill:#eef2ff,stroke:#6264a7
+    style AWS fill:#e8f5e9,stroke:#237b4b
