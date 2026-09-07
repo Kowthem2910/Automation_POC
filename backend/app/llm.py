@@ -1,5 +1,5 @@
 """
-LLM wrapper.
+LLM wrapper. (tested with Claude 4.6)
 
 REAL FLOW NOTE:
 If ANTHROPIC_API_KEY is set in the environment, this module calls the real
